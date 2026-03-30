@@ -13,6 +13,6 @@ def get_subscriptions_keyboard() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="💎 12 месяцев — 1499₽ / 500 GB", callback_data="buy:month_12:1499"))
     
     # Кнопка назад
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main", icon_custom_emoji_id="5258179403652801593"))
+    builder.row(InlineKeyboardButton(text="Назад", callback_data="back_to_main", icon_custom_emoji_id="5258236805890710909"))
     
     return builder.as_markup()

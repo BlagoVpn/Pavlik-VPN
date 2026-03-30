@@ -29,8 +29,9 @@ def get_payment_keyboard(pay_url: str, transaction_id: str) -> InlineKeyboardMar
     
     # Кнопка назад
     builder.row(InlineKeyboardButton(
-        text="◀️ Назад", 
-        callback_data="buy_subscription"
+        text="Назад", 
+        callback_data="buy_subscription",
+        icon_custom_emoji_id="5258236805890710909"
     ))
     
     return builder.as_markup()

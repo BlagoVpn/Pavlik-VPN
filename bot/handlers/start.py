@@ -13,14 +13,30 @@ async def cmd_start(message: types.Message, session: AsyncSession):
     """
     Хендлер на команду /start (HTML без лишних ID в тексте)
     """
-    user = await get_user_by_id(session, message.from_user.id)
+    user_id = message.from_user.id
+    user = await get_user_by_id(session, user_id)
     
     if not user:
+        # Пытаемся получить реферальный код (например, /start ref_12345)
+        # Или просто /start 12345 (в зависимости от формата, который мы выберем)
+        # В нашем текущем коде было: t.me/bot?start={user_id}
+        args = message.command.args
+        referred_by = None
+        
+        if args and args.isdigit():
+            referred_by_id = int(args)
+            # Проверяем, что не сам себя пригласил и реферер существует
+            if referred_by_id != user_id:
+                referrer = await get_user_by_id(session, referred_by_id)
+                if referrer:
+                    referred_by = referred_by_id
+
         user = await register_user(
             session, 
-            message.from_user.id, 
+            user_id, 
             message.from_user.username, 
-            message.from_user.full_name
+            message.from_user.full_name,
+            referred_by=referred_by
         )
 
     await message.answer(

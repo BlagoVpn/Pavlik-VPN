@@ -7,7 +7,7 @@ from apps.db.models.user import User
 from apps.db.models.transaction import Transaction
 from bot.keyboards.main_menu import get_main_menu_keyboard
 from bot.keyboards.subscriptions import get_subscriptions_keyboard
-from bot.keyboards.common import get_back_keyboard
+from bot.keyboards.common import get_back_keyboard, get_back_to_profile_keyboard
 from bot.keyboards.profile_kb import get_profile_keyboard
 from bot.keyboards.trial_kb import get_trial_confirmation_keyboard
 
@@ -55,9 +55,9 @@ async def show_history_tx(callback: types.CallbackQuery, session: AsyncSession):
     ]) or "• История пока пуста"
 
     await callback.message.edit_text(
-        f"<tg-emoji emoji-id=\"\">📜</tg-emoji> <b>История ваших транзакций</b>\n\n"
+        f"<tg-emoji emoji-id=\"5258419835922030550\">📜</tg-emoji> <b>История ваших транзакций</b>\n\n"
         f"{history_text}\n\n",
-        reply_markup=get_back_keyboard(),
+        reply_markup=get_back_to_profile_keyboard(),
         parse_mode="HTML"
     )
     await callback.answer()
@@ -81,22 +81,87 @@ async def show_my_subs(callback: types.CallbackQuery, session: AsyncSession):
         f"<tg-emoji emoji-id=\"5255813559572508065\">💎</tg-emoji> <b>Ваши подписки</b>\n\n"
         f"<tg-emoji emoji-id=\"5258330865674494479\">🆔</tg-emoji> Статус основной подписки: <b>{sub_status}</b>\n\n"
         f"<i>(В будущем здесь будет отображен список всех ваших приватных ключей)</i>",
-        reply_markup=get_back_keyboard(),
+        reply_markup=get_back_to_profile_keyboard(),
         parse_mode="HTML"
     )
     await callback.answer()
 
+from bot.keyboards.referral_kb import get_referral_keyboard
+from sqlalchemy import func
+
 @menu_router.callback_query(F.data == "referrals")
-async def show_referrals(callback: types.CallbackQuery):
+async def show_referrals(callback: types.CallbackQuery, session: AsyncSession):
     """
-    Реферальная система (HTML + Premium Emoji)
+    Реферальная система (HTML + Профессиональный дизайн)
     """
-    ref_link = f"https://t.me/pavlik_vpn_bot?start={callback.from_user.id}"
+    user_id = callback.from_user.id
+    user = await session.get(User, user_id)
+    
+    # 1. Считаем количество рефералов 1-го уровня
+    stmt1 = select(func.count(User.id)).where(User.referred_by == user_id)
+    res1 = await session.execute(stmt1)
+    lvl1_count = res1.scalar() or 0
+    
+    # 2. Считаем количество рефералов 2-го уровня
+    # Для этого ищем тех, у кого referred_by входит в список ID рефералов 1-го уровня
+    stmt2 = select(func.count(User.id)).where(User.referred_by.in_(
+        select(User.id).where(User.referred_by == user_id)
+    ))
+    res2 = await session.execute(stmt2)
+    lvl2_count = res2.scalar() or 0
+    
+    # Формируем текст
+    bot_username = (await callback.bot.get_me()).username
+    ref_link = f"https://t.me/{bot_username}?start={user_id}"
+    
+    # Конфигурация уровней (20% и 5%)
+    lvl1_percent = 20
+    lvl2_percent = 5
+    
     await callback.message.edit_text(
-        f'<tg-emoji emoji-id=\"5258513401784573443\">👥</tg-emoji> <b>Реферальная система</b>\n\n'
-        f"Приглашайте друзей и получайте бонусные дни к подписке!\n\n"
-        f"<tg-emoji emoji-id=\"5260730055880876557\">🔗</tg-emoji> Ваша ссылка:\n<code>{ref_link}</code>\n\n"
-        f"<i>(Система зачисления бонусов проходит финальную настройку...)</i>",
+        f"<b><tg-emoji emoji-id=\"5258486128742244085\">👥</tg-emoji> Реферальная система</b>\n\n"
+        f"Приглашайте друзей и получайте бонусы с их покупок!\n\n"
+        f"Реферальная ссылка: <code>{ref_link}</code>\n\n"
+        f"<b><tg-emoji emoji-id=\"5258501105293205250\">💰</tg-emoji> Всего заработано:</b> {user.total_earned:.2f} ₽\n"
+        f"<b><tg-emoji emoji-id=\"5258368777350816286\">💰</tg-emoji> Доступно для вывода:</b> {user.referral_balance:.2f} ₽\n\n"
+        f"Для вывода средств обратитесь в поддержку.",
+        reply_markup=get_referral_keyboard(ref_link),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@menu_router.callback_query(F.data == "copy_ref_link")
+async def process_copy_ref(callback: types.CallbackQuery):
+    """
+    Хендлер для кнопки 'Скапировать ссылку' (синяя)
+    """
+    bot_username = (await callback.bot.get_me()).username
+    ref_link = f"https://t.me/{bot_username}?start={callback.from_user.id}"
+    
+    await callback.message.answer(
+        f"<tg-emoji emoji-id=\"5260730055880876557\">🔗</tg-emoji> <b>Ваша ссылка для копирования (нажмите на неё):</b>\n"
+        f"<code>{ref_link}</code>",
+        parse_mode="HTML"
+    )
+    await callback.answer("Ссылка готова!")
+
+@menu_router.callback_query(F.data == "withdraw_referral")
+async def withdraw_referral(callback: types.CallbackQuery, session: AsyncSession):
+    """
+    Вывод реферальных средств (HTML)
+    """
+    user = await session.get(User, callback.from_user.id)
+    
+    if user.referral_balance < 1000: # Например, минималка 1000 руб
+        await callback.answer(f"❌ Минимальная сумма вывода — 1000 ₽\nВаш баланс: {user.referral_balance:.2f} ₽", show_alert=True)
+        return
+        
+    await callback.message.edit_text(
+        f"<b><tg-emoji emoji-id=\"5402429676763231362\">💰</tg-emoji> Вывод средств</b>\n\n"
+        f"Ваш доступный баланс: <b>{user.referral_balance:.2f} ₽</b>\n\n"
+        f"Для оформления выплаты на <b>USDT TRC-20</b> свяжитесь с поддержкой и "
+        f"укажите ваш ID (<code>{user.id}</code>).\n\n"
+        f"<tg-emoji emoji-id=\"5307761176132720417\">❓</tg-emoji> Поддержка: @pavlik_support",
         reply_markup=get_back_keyboard(),
         parse_mode="HTML"
     )
@@ -141,10 +206,10 @@ async def auto_check_payment(message: types.Message, tx_id: int, platega_id: str
                 await update_transaction_status(session, tx_id, "CONFIRMED")
             
             await message.edit_text(
-                "<tg-emoji emoji-id=\"5260341314095947411\">✅</tg-emoji> **Оплата подтверждена автоматически!**\n\n"
+                "<tg-emoji emoji-id=\"5260341314095947411\">✅</tg-emoji> <b>Оплата подтверждена автоматически!</b>\n\n"
                 "Ваша подписка активирована. Ожидайте данные для подключения! <tg-emoji emoji-id=\"5260221883940347555\">🚀</tg-emoji>",
                 reply_markup=get_back_keyboard(),
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
             return
         
@@ -153,9 +218,9 @@ async def auto_check_payment(message: types.Message, tx_id: int, platega_id: str
                 await update_transaction_status(session, tx_id, status)
             
             await message.edit_text(
-                f"<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> **Платеж был отклонен или отменен.**\nСтатус: {status}",
+                f"<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> <b>Платеж был отклонен или отменен.</b>\nСтатус: <b>{status}</b>",
                 reply_markup=get_back_keyboard(),
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
             return
 
@@ -167,7 +232,7 @@ async def process_buy_tariff(callback: types.CallbackQuery, session: AsyncSessio
     _, tariff_key, amount = callback.data.split(":")
     amount = float(amount)
 
-    await callback.message.edit_text("<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> **Загрузка платежа...**", parse_mode="Markdown")
+    await callback.message.edit_text("<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>Загрузка платежа...</b>", parse_mode="HTML")
 
     tx = await create_transaction(session, callback.from_user.id, amount, tariff_key)
     description = f"Оплата VPN: {tariff_key}"
@@ -175,9 +240,9 @@ async def process_buy_tariff(callback: types.CallbackQuery, session: AsyncSessio
 
     if not payment_data or "redirect" not in payment_data:
         await callback.message.edit_text(
-            "<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> **Ошибка при создании счета.**",
+            "<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> <b>Ошибка при создании счета.</b>",
             reply_markup=get_back_keyboard(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         return
 
@@ -198,14 +263,14 @@ async def process_buy_tariff(callback: types.CallbackQuery, session: AsyncSessio
     days = {"month_1": "30", "month_3": "90", "month_6": "180", "month_12": "365"}.get(tariff_key, "30")
 
     await callback.message.edit_text(
-        f"<tg-emoji emoji-id=\"5258204546391351475\">💳</tg-emoji> **Подтверждение покупки**\n\n"
-        f"Срок: **{days} дней**\n"
-        f"Устройств: **Безлимит**\n"
-        f"Цена: **{amount}₽**\n\n"
+        f"<tg-emoji emoji-id=\"5258204546391351475\">💳</tg-emoji> <b>Подтверждение покупки</b>\n\n"
+        f"Срок: <b>{days} дней</b>\n"
+        f"Устройств: <b>Безлимит</b>\n"
+        f"Цена: <b>{amount}₽</b>\n\n"
         "Нажми кнопку ниже для оплаты.\n"
-        "После оплаты бот **автоматически** увидит платеж в течение минуты! <tg-emoji emoji-id=\"5260221883940347555\">🚀</tg-emoji>",
+        "После оплаты бот <b>автоматически</b> увидит платеж в течение минуты! <tg-emoji emoji-id=\"5260221883940347555\">🚀</tg-emoji>",
         reply_markup=get_payment_keyboard(payment_data["redirect"], str(tx.id)),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     await callback.answer()
 
@@ -227,10 +292,10 @@ async def check_payment_status(callback: types.CallbackQuery, session: AsyncSess
     if status == "CONFIRMED":
         await update_transaction_status(session, tx_id, "CONFIRMED")
         await callback.message.edit_text(
-            "<tg-emoji emoji-id=\"5260221883940347555\">✅</tg-emoji> **Оплата прошла успешно!**\n\n"
+            "<tg-emoji emoji-id=\"5260221883940347555\">✅</tg-emoji> <b>Оплата прошла успешно!</b>\n\n"
             "Ваша подписка активирована. В ближайшее время мы пришлем вам данные для подключения.",
             reply_markup=get_back_keyboard(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     elif status == "PENDING":
         await callback.answer("⏳ Платеж еще обрабатывается. Попробуйте через минуту.", show_alert=True)
@@ -238,11 +303,11 @@ async def check_payment_status(callback: types.CallbackQuery, session: AsyncSess
         # Если статус изменился на какой-то другой (CANCELED, FAILED и т.д.)
         await update_transaction_status(session, tx_id, status)
         await callback.message.edit_text(
-            f"<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> **Статус платежа изменился.**\n\n"
-            f"Текущий статус: **{status}**\n"
+            f"<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> <b>Статус платежа изменился.</b>\n\n"
+            f"Текущий статус: <b>{status}</b>\n"
             f"Если вы считаете, что это ошибка, обратитесь в поддержку.",
             reply_markup=get_back_keyboard(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         await callback.answer()
 
@@ -252,10 +317,10 @@ async def show_instructions(callback: types.CallbackQuery):
     Инструкция (Помощь)
     """
     await callback.message.edit_text(
-        "<tg-emoji emoji-id=\"5307761176132720417\">❓</tg-emoji> **Помощь и инструкции**\n\n"
+        "<tg-emoji emoji-id=\"5307761176132720417\">❓</tg-emoji> <b>Помощь и инструкции</b>\n\n"
         "Здесь будет ваша инструкция по подключению через строку vless...",
         reply_markup=get_back_keyboard(),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     await callback.answer()
 

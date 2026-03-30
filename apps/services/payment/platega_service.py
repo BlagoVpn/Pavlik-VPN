@@ -1,5 +1,7 @@
 import aiohttp
 import logging
+import time
+import uuid
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -13,10 +15,12 @@ class PlategaService:
         self.secret_key = secret_key
         self.base_url = "https://app.platega.io"
         
-        # Заголовки для авторизации (из документации Platega)
+        # Заголовки для авторизации (используем несколько вариантов для совместимости с разными версиями API)
         self.headers = {
             "X-MerchantId": self.merchant_id,
-            "X-Secret": self.secret_key,
+            "X-Secret": self.secret_key, # Старый вариант
+            "X-API-KEY": self.secret_key, # Альтернативный вариант
+            "Authorization": f"Bearer {self.secret_key}", # Современный стандарт
             "Content-Type": "application/json"
         }
 
@@ -33,27 +37,42 @@ class PlategaService:
         """
         endpoint = f"{self.base_url}/transaction/process"
         
+        # Platega теперь требует ID в формате UUID (GUID)
+        unique_order_id = str(uuid.uuid4())
+        
         payload = {
+            "command": "process", # Добавляем обязательное поле 'command'
+            "id": unique_order_id,
             "paymentMethod": payment_method,
             "paymentDetails": {
                 "amount": amount,
                 "currency": currency
             },
-            "description": description,
-            "payload": order_id # Передаем ID заказа, чтобы отследить его в коллбэке
+            "description": f"{description} (Заказ #{order_id})",
+            "returnUrl": f"https://t.me/pavlik_vpn_bot",
+            "failedUrl": f"https://t.me/pavlik_vpn_bot"
         }
 
         async with aiohttp.ClientSession() as session:
             try:
+                # Отладочный лог заголовков (маскируем секрет)
+                masked_headers = {k: (v[:4] + "***" if "secret" in k.lower() or "key" in k.lower() else v) for k, v in self.headers.items()}
+                logger.info(f"Sending request to Platega. Endpoint: {endpoint}. Headers: {masked_headers}")
+
                 async with session.post(endpoint, json=payload, headers=self.headers) as response:
+                    response_text = await response.text()
+                    try:
+                        response_json = await response.json()
+                    except:
+                        response_json = {"raw_error": response_text}
+
                     if response.status == 200:
-                        return await response.json()
+                        return response_json
                     
-                    error_text = await response.text()
-                    logger.error(f"Platega error: {response.status} - {error_text}")
+                    logger.error(f"Platega API Error (Status {response.status}): {response_json}")
                     return None
             except Exception as e:
-                logger.error(f"Platega connection error: {e}")
+                logger.error(f"Platega Connection Fatal Error: {e}")
                 return None
 
     async def check_status(self, transaction_id: str) -> Optional[str]:

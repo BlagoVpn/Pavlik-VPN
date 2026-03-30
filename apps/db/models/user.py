@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, String, Boolean, DateTime
+from sqlalchemy import BigInteger, String, Boolean, DateTime, Float
 from sqlalchemy.orm import Mapped, mapped_column
 from apps.db.models.base import Base
 from datetime import datetime
@@ -29,6 +29,10 @@ class User(Base):
 
     # Использовал ли пробный период
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Реферальный доход (по умолчанию 0.0)
+    referral_balance: Mapped[float] = mapped_column(Float, default=0.0)
+    total_earned: Mapped[float] = mapped_column(Float, default=0.0)
 
     def __repr__(self) -> str:
         return f"<User user_id={self.user_id} full_name='{self.full_name}'>"
