@@ -6,7 +6,7 @@ async def get_user_by_id(session: AsyncSession, user_id: int) -> User:
     """
     Получает пользователя по его Telegram ID
     """
-    stmt = select(User).where(User.user_id == user_id)
+    stmt = select(User).where(User.id == user_id)
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -15,7 +15,7 @@ async def register_user(session: AsyncSession, user_id: int, username: str, full
     Регистрирует нового пользователя в базе
     """
     new_user = User(
-        user_id=user_id,
+        id=user_id,
         username=username,
         full_name=full_name
     )

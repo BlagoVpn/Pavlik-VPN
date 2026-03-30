@@ -11,26 +11,26 @@ start_router = Router()
 @start_router.message(CommandStart())
 async def cmd_start(message: types.Message, session: AsyncSession):
     """
-    Хендлер на команду /start с регистрацией в БД
+    Хендлер на команду /start (HTML без лишних ID в тексте)
     """
-    # Проверяем, есть ли юзер в базе
     user = await get_user_by_id(session, message.from_user.id)
     
     if not user:
-        # Если нет — регистрируем
-        await register_user(
+        user = await register_user(
             session, 
             message.from_user.id, 
             message.from_user.username, 
             message.from_user.full_name
         )
-        print(f"Зарегистрирован новый юзер: {message.from_user.full_name}")
 
     await message.answer(
-        f"Привет, {message.from_user.first_name}! 🚀\n\n"
-        "Добро пожаловать в **Павлик VPN**. Я помогу тебе получить быстрый и безопасный доступ "
-        "в интернет из любой точки мира. 🌍\n\n"
-        "Выбери нужное действие ниже: 👇",
-        reply_markup=get_main_menu_keyboard(),
-        parse_mode="Markdown"
+        f"⚡ <b>Pavlik VPN — Ваш персональный ключ к свободе.</b>\n\n"
+        f"Забудьте о границах в интернете. Мы обеспечиваем сверхбыстрое соединение, абсолютную анонимность и доступ к любому контенту в один клик. 🌍\n\n"
+        f"🔥 <b>Наши преимущества:</b>\n"
+        f"  •  <b>Скорость:</b> До 1 Гбит/с без задержек.\n"
+        f"  •  <b>Приватность:</b> Строгая политика No-Logs.\n"
+        f"  •  <b>Простота:</b> Настройка за 30 секунд прямо в Telegram.\n\n"
+        f"<i>Ваша безопасность — наша работа. Подключайтесь и летайте! 🚀</i>",
+        reply_markup=get_main_menu_keyboard(user), # Передаем юзера сюда
+        parse_mode="HTML"
     )

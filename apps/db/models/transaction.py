@@ -11,8 +11,11 @@ class Transaction(Base):
     """
     __tablename__ = "transactions"
 
-    # Ссылаемся на пользователя
-    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    # У каждой транзакции свой уникальный ID (автоинкремент)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    
+    # Ссылаемся на пользователя через Telegram ID (Foreign Key)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     
     # Данные платежа
     amount: Mapped[float] = mapped_column(Float)

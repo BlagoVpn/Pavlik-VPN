@@ -10,8 +10,8 @@ class User(Base):
     """
     __tablename__ = "users"
 
-    # Telegram ID (храним как BigInteger, т.к. ID могут быть очень длинными)
-    user_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    # Telegram ID делаем основным ключом (PK)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     
     # Данные из телеграма
     username: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
@@ -23,6 +23,12 @@ class User(Base):
     
     # Ссылка на VLESS (будем хранить её здесь после создания в панели)
     vless_link: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+
+    # Реферальная система
+    referred_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+
+    # Использовал ли пробный период
+    trial_used: Mapped[bool] = mapped_column(Boolean, default=False)
 
     def __repr__(self) -> str:
         return f"<User user_id={self.user_id} full_name='{self.full_name}'>"

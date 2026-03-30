@@ -5,5 +5,5 @@ def get_back_keyboard() -> InlineKeyboardMarkup:
     Возвращает одну кнопку 'Назад'
     """
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main", icon_custom_emoji_id="5258179403652801593")]
     ])
