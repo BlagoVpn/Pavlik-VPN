@@ -1,17 +1,24 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+class SuccessButton(InlineKeyboardButton):
+    """
+    Бэкенд-хак: расширяем кнопку, чтобы она «проглотила» параметр style.
+    Это позволит отправить 'success' напрямую в Telegram API.
+    """
+    style: str = "success"
+
 def get_payment_keyboard(pay_url: str, transaction_id: str) -> InlineKeyboardMarkup:
     """
     Клавиатура оплаты (скриншот 3)
     """
     builder = InlineKeyboardBuilder()
     
-    # Основная кнопка оплаты (открывается как Mini App)
-    # Попробуем передать цвет, если поддерживается протоколом
-    builder.row(InlineKeyboardButton(
+    # Кнопка оплаты – форсируем стиль 'success' (зеленый)
+    builder.row(SuccessButton(
         text="💳 Оплатить", 
-        web_app=WebAppInfo(url=pay_url)
+        web_app=WebAppInfo(url=pay_url),
+        style="success"
     ))
     
     # Кнопка подтверждения
