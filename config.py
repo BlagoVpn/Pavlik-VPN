@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     PANEL_USERNAME: str
     PANEL_PASSWORD: str
 
+    # Platega Payment Settings
+    PLATEGA_MERCHANT_ID: str
+    PLATEGA_SECRET: str
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
