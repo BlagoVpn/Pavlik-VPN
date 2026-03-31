@@ -379,11 +379,11 @@ async def show_trial_confirmation(callback: types.CallbackQuery, session: AsyncS
     end_date = (datetime.now() + timedelta(days=3)).strftime("%d.%m.%Y %H:%M")
 
     await callback.message.edit_text(
-        f"🎁 <b>Активация пробного периода</b>\n\n"
+        f"<tg-emoji emoji-id=\"5199749070830197566\">🎁</tg-emoji> <b>Активация пробного периода</b>\n\n"
         f"Вы собираетесь активировать бесплатный доступ на <b>3 дня</b>.\n"
         f"Он будет действовать до: <b>{end_date}</b>\n\n"
-        f"⚠️ <b>Внимание:</b> Пробный период можно активировать только <b>один раз</b>.\n\n"
-        f"💡 <i>После активации вы сможете следить за статусом в разделе:\n"
+        f"<tg-emoji emoji-id=\"5420323339723881652\">⚠️</tg-emoji> <b>Внимание:</b> Пробный период можно активировать только <b>один раз</b>.\n\n"
+        f"<tg-emoji emoji-id=\"5258216851472654189\">💡</tg-emoji> <i>После активации вы сможете следить за статусом в разделе:\n"
         f"Профиль -> Мои подписки</i>",
         reply_markup=get_trial_confirmation_keyboard(),
         parse_mode="HTML"
