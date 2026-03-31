@@ -16,15 +16,17 @@ def get_payment_keyboard(pay_url: str, transaction_id: str) -> InlineKeyboardMar
     
     # Кнопка оплаты – форсируем стиль 'success' (зеленый)
     builder.row(SuccessButton(
-        text="💳 Оплатить", 
+        text="Оплатить", 
         web_app=WebAppInfo(url=pay_url),
+        icon_custom_emoji_id="5445353829304387411",
         style="success"
     ))
     
     # Кнопка подтверждения
     builder.row(InlineKeyboardButton(
-        text="✅ Я оплатил", 
-        callback_data=f"check_payment:{transaction_id}"
+        text="Я оплатил", 
+        callback_data=f"check_payment:{transaction_id}",
+        icon_custom_emoji_id="5206607081334906820"
     ))
     
     # Кнопка назад

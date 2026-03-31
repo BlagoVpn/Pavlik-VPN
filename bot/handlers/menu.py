@@ -130,21 +130,6 @@ async def show_referrals(callback: types.CallbackQuery, session: AsyncSession):
     )
     await callback.answer()
 
-@menu_router.callback_query(F.data == "copy_ref_link")
-async def process_copy_ref(callback: types.CallbackQuery):
-    """
-    Хендлер для кнопки 'Скапировать ссылку' (синяя)
-    """
-    bot_username = (await callback.bot.get_me()).username
-    ref_link = f"https://t.me/{bot_username}?start={callback.from_user.id}"
-    
-    await callback.message.answer(
-        f"<tg-emoji emoji-id=\"5260730055880876557\">🔗</tg-emoji> <b>Ваша ссылка для копирования (нажмите на неё):</b>\n"
-        f"<code>{ref_link}</code>",
-        parse_mode="HTML"
-    )
-    await callback.answer("Ссылка готова!")
-
 @menu_router.callback_query(F.data == "withdraw_referral")
 async def withdraw_referral(callback: types.CallbackQuery, session: AsyncSession):
     """
