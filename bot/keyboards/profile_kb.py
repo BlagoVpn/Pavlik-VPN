@@ -11,6 +11,9 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="Мои подписки", callback_data="my_subs", icon_custom_emoji_id="5258185631355378853")
     )
     builder.row(
+        InlineKeyboardButton(text="Пользовательское соглашение", callback_data="user_agreement", icon_custom_emoji_id="5258328383183396223")
+    )
+    builder.row(
         InlineKeyboardButton(text="Назад в меню", callback_data="back_to_main", icon_custom_emoji_id="5258179403652801593", style="danger")
     )
 
