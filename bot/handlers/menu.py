@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Router, F, types
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -56,8 +57,8 @@ async def show_profile(callback: types.CallbackQuery, session: AsyncSession):
         return
 
     await callback.message.edit_text(
-        f"<b>Привет, {user.full_name}!</b>\n\n"
-        f"ID: <code>{user_id}</code>\n",
+        f"<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>Привет, {user.full_name}!</b>\n\n"
+        f"🆔 ID: <code>{user_id}</code>\n",
         reply_markup=get_profile_keyboard(),
         parse_mode="HTML"
     )
@@ -261,7 +262,6 @@ async def process_buy_tariff(callback: types.CallbackQuery, session: AsyncSessio
 
     await update_transaction_id(session, tx.id, payment_data["transactionId"])
 
-    import asyncio
     from apps.db.database import async_session
     asyncio.create_task(
         _auto_confirm_payment(callback.message, tx.id, payment_data["transactionId"], async_session)
@@ -278,8 +278,8 @@ async def process_buy_tariff(callback: types.CallbackQuery, session: AsyncSessio
 
 
 async def _auto_confirm_payment(message: types.Message, tx_id: int, external_id: str, session_maker):
-    import asyncio
-    for _ in range(30):
+    # 90 раз по 20 сек = 30 минут
+    for _ in range(90):
         await asyncio.sleep(20)
         try:
             status = await platega.check_status(external_id)
@@ -297,7 +297,13 @@ async def _auto_confirm_payment(message: types.Message, tx_id: int, external_id:
                     parse_mode="HTML"
                 )
             except Exception:
-                pass
+                try:
+                    await message.answer(
+                        "<tg-emoji emoji-id=\"5260341314095947411\">✅</tg-emoji> <b>Оплата подтверждена!</b>\nВаша подписка активирована. Ссылку ищите в Профиле → Мои подписки.",
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
             return
 
         if status in ("CANCELED", "FAILED"):
@@ -342,17 +348,21 @@ async def _activate_subscription_after_payment(session: AsyncSession, tx_id: int
     if user.vpn_uuid:
         current_end = user.subscription_end if (user.subscription_end and user.subscription_end > now) else now
         new_end = current_end + timedelta(days=days)
+        user.subscription_end = new_end
+        user.is_active = True
         ok = await remnawave.extend_user(user.vpn_uuid, new_expire_dt=new_end)
-        if ok:
-            user.subscription_end = new_end
-            user.is_active = True
+        if not ok:
+            logger.warning(f"Remnawave extend_user failed для user={user.id}, подписка обновлена только в БД")
     else:
+        new_end = now + timedelta(days=days)
+        user.subscription_end = new_end
+        user.is_active = True
         vpn_user = await remnawave.create_user(telegram_id=user.id, days=days)
         if vpn_user:
             user.vpn_uuid = vpn_user.uuid
             user.vless_link = vpn_user.subscription_url
-            user.subscription_end = now + timedelta(days=days)
-            user.is_active = True
+        else:
+            logger.warning(f"Remnawave create_user failed для user={user.id}, подписка обновлена только в БД")
 
     await session.commit()
 
@@ -564,4 +574,3 @@ async def global_error_handler(event: ErrorEvent):
             await notify_admins(bot, err_text)
     except Exception:
         pass
-
