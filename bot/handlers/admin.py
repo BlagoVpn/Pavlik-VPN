@@ -2,6 +2,8 @@ import asyncio
 import logging
 import logging.handlers
 import os
+import subprocess
+import tempfile
 from datetime import datetime
 
 from aiogram import Router, types, F
@@ -17,7 +19,6 @@ from config import config
 admin_router = Router()
 logger = logging.getLogger(__name__)
 
-# ─── Лог действий админов ───────────────────────────────────────
 os.makedirs("logs", exist_ok=True)
 _action_handler = logging.handlers.RotatingFileHandler(
     "logs/admin_actions.log", maxBytes=2*1024*1024, backupCount=3, encoding="utf-8"
@@ -42,15 +43,14 @@ def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
 
 
-# ─── Фильтр: только для админов ─────────────────────────────────
 def admin_only(message: types.Message) -> bool:
     return is_admin(message.from_user.id)
 
 
-# ─── /users_stats ────────────────────────────────────────────────
-@admin_router.message(Command("users_stats"), F.func(admin_only))
+# ─── /blago_users_stats ──────────────────────────────────────────
+@admin_router.message(Command("blago_users_stats"), F.func(admin_only))
 async def cmd_users_stats(message: types.Message, session: AsyncSession):
-    log_action(message.from_user.id, "/users_stats")
+    log_action(message.from_user.id, "/blago_users_stats")
     try:
         now = datetime.now()
 
@@ -67,12 +67,10 @@ async def cmd_users_stats(message: types.Message, session: AsyncSession):
             select(func.count(User.id)).where(User.trial_used == True)
         )).scalar() or 0
 
-        # Выручка (CONFIRMED транзакции)
         revenue = (await session.execute(
             select(func.sum(Transaction.amount)).where(Transaction.status == "CONFIRMED")
         )).scalar() or 0.0
 
-        # Новые за сегодня
         today_start = datetime.now().replace(hour=0, minute=0, second=0)
         new_today = (await session.execute(
             select(func.count(User.id)).where(User.created_at >= today_start)
@@ -92,12 +90,12 @@ async def cmd_users_stats(message: types.Message, session: AsyncSession):
         await message.answer(f"❌ Ошибка БД: <code>{e}</code>", parse_mode="HTML")
 
 
-# ─── /give_sub [user_id] [days] ─────────────────────────────────
-@admin_router.message(Command("give_sub"), F.func(admin_only))
+# ─── /blago_give_sub [user_id] [days] ───────────────────────────
+@admin_router.message(Command("blago_give_sub"), F.func(admin_only))
 async def cmd_give_sub(message: types.Message, session: AsyncSession):
     parts = message.text.split()
     if len(parts) != 3:
-        await message.answer("Использование: /give_sub <user_id> <days>")
+        await message.answer("Использование: /blago_give_sub <user_id> <days>")
         return
 
     try:
@@ -107,7 +105,7 @@ async def cmd_give_sub(message: types.Message, session: AsyncSession):
         await message.answer("❌ user_id и days должны быть числами")
         return
 
-    log_action(message.from_user.id, f"/give_sub user={target_id} days={days}")
+    log_action(message.from_user.id, f"/blago_give_sub user={target_id} days={days}")
 
     try:
         user = await session.get(User, target_id)
@@ -118,7 +116,6 @@ async def cmd_give_sub(message: types.Message, session: AsyncSession):
         now = datetime.now()
         from datetime import timedelta
 
-        # Продлеваем в Remnawave
         if user.vpn_uuid:
             current_end = user.subscription_end if (user.subscription_end and user.subscription_end > now) else now
             new_end = current_end + timedelta(days=days)
@@ -126,7 +123,6 @@ async def cmd_give_sub(message: types.Message, session: AsyncSession):
             if not ok:
                 await message.answer("⚠️ Обновлено в БД, но Remnawave вернул ошибку — проверь панель.")
         else:
-            # Создаём пользователя в Remnawave
             vpn_user = await remnawave.create_user(telegram_id=user.id, days=days)
             if vpn_user:
                 user.vpn_uuid = vpn_user.uuid
@@ -152,18 +148,17 @@ async def cmd_give_sub(message: types.Message, session: AsyncSession):
         await message.answer(f"❌ Ошибка БД: <code>{e}</code>", parse_mode="HTML")
 
 
-# ─── /info [user_id] ─────────────────────────────────────────────
-@admin_router.message(Command("info"), F.func(admin_only))
+# ─── /blago_info [user_id] ───────────────────────────────────────
+@admin_router.message(Command("blago_info"), F.func(admin_only))
 async def cmd_info(message: types.Message, session: AsyncSession):
     parts = message.text.split()
     if len(parts) != 2:
-        await message.answer("Использование: /info <user_id>")
+        await message.answer("Использование: /blago_info <user_id>")
         return
 
-    log_action(message.from_user.id, f"/info target={parts[1]}")
+    log_action(message.from_user.id, f"/blago_info target={parts[1]}")
 
     try:
-        # Ищем по ID или username
         target = parts[1].lstrip("@")
         if target.isdigit():
             user = await session.get(User, int(target))
@@ -186,7 +181,6 @@ async def cmd_info(message: types.Message, session: AsyncSession):
         else:
             sub_status = "❌ Нет подписки"
 
-        # Транзакции
         txs = (await session.execute(
             select(func.count(Transaction.id)).where(
                 Transaction.user_id == user.id,
@@ -221,15 +215,15 @@ async def cmd_info(message: types.Message, session: AsyncSession):
         await message.answer(f"❌ Ошибка БД: <code>{e}</code>", parse_mode="HTML")
 
 
-# ─── /broadcast [текст] ─────────────────────────────────────────
-@admin_router.message(Command("broadcast"), F.func(admin_only))
+# ─── /blago_broadcast [текст] ───────────────────────────────────
+@admin_router.message(Command("blago_broadcast"), F.func(admin_only))
 async def cmd_broadcast(message: types.Message, session: AsyncSession):
-    text = message.text.removeprefix("/broadcast").strip()
+    text = message.text.removeprefix("/blago_broadcast").strip()
     if not text:
-        await message.answer("Использование: /broadcast <текст сообщения>")
+        await message.answer("Использование: /blago_broadcast <текст сообщения>")
         return
 
-    log_action(message.from_user.id, f"/broadcast text={text[:50]}")
+    log_action(message.from_user.id, f"/blago_broadcast text={text[:50]}")
 
     try:
         result = await session.execute(select(User.id))
@@ -243,7 +237,7 @@ async def cmd_broadcast(message: types.Message, session: AsyncSession):
                 sent += 1
             except Exception:
                 failed += 1
-            await asyncio.sleep(0.05)  # ~20 msg/sec — в рамках лимита Telegram
+            await asyncio.sleep(0.05)
 
         await message.answer(
             f"📢 Рассылка завершена\n✅ Доставлено: {sent}\n❌ Не доставлено: {failed}"
@@ -253,16 +247,64 @@ async def cmd_broadcast(message: types.Message, session: AsyncSession):
         await message.answer(f"❌ Ошибка: <code>{e}</code>", parse_mode="HTML")
 
 
-# ─── /admin_help ─────────────────────────────────────────────────
-@admin_router.message(Command("admin_help"), F.func(admin_only))
+# ─── /blago_backup ───────────────────────────────────────────────
+@admin_router.message(Command("blago_backup"), F.func(admin_only))
+async def cmd_backup(message: types.Message):
+    log_action(message.from_user.id, "/blago_backup")
+    await message.answer("⏳ Создаю дамп БД...")
+
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"backup_{config.DB_NAME}_{timestamp}.sql"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, filename)
+
+            env = os.environ.copy()
+            env["PGPASSWORD"] = config.DB_PASS
+
+            result = subprocess.run(
+                [
+                    "pg_dump",
+                    "-h", config.DB_HOST,
+                    "-p", str(config.DB_PORT),
+                    "-U", config.DB_USER,
+                    "-d", config.DB_NAME,
+                    "-f", filepath,
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                await message.answer(f"❌ pg_dump завершился с ошибкой:\n<code>{result.stderr}</code>", parse_mode="HTML")
+                return
+
+            with open(filepath, "rb") as f:
+                await message.answer_document(
+                    types.BufferedInputFile(f.read(), filename=filename),
+                    caption=f"✅ Бэкап БД <b>{config.DB_NAME}</b>\n🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                    parse_mode="HTML",
+                )
+    except FileNotFoundError:
+        await message.answer("❌ <code>pg_dump</code> не найден на сервере. Установи postgresql-client.", parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"backup error: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: <code>{e}</code>", parse_mode="HTML")
+
+
+# ─── /blago_help ─────────────────────────────────────────────────
+@admin_router.message(Command("blago_help"), F.func(admin_only))
 async def cmd_admin_help(message: types.Message):
-    log_action(message.from_user.id, "/admin_help")
+    log_action(message.from_user.id, "/blago_help")
     await message.answer(
-        "🔧 <b>Скрытая админ-панель</b>\n\n"
-        "/users_stats — статистика пользователей\n"
-        "/give_sub <id> <дни> — выдать подписку\n"
-        "/info <id или @username> — карточка пользователя\n"
-        "/broadcast <текст> — рассылка всем\n"
-        "/admin_help — эта справка",
+        "🔧 <b>Админ-панель</b>\n\n"
+        "/blago_users_stats — статистика пользователей\n"
+        "/blago_give_sub &lt;id&gt; &lt;дни&gt; — выдать подписку\n"
+        "/blago_info &lt;id или @username&gt; — карточка пользователя\n"
+        "/blago_broadcast &lt;текст&gt; — рассылка всем\n"
+        "/blago_backup — скачать дамп БД\n"
+        "/blago_help — эта справка",
         parse_mode="HTML"
     )
