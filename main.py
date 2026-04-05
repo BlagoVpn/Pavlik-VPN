@@ -8,8 +8,10 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 
+from sqlalchemy import select
 from config import config
 from apps.db.database import async_session
+from apps.db.models.transaction import Transaction
 from bot.middlewares.db import DbSessionMiddleware
 from bot.middlewares.admin import AdminMiddleware
 from bot.handlers.start import start_router
@@ -22,7 +24,6 @@ os.makedirs("logs", exist_ok=True)
 def setup_logging():
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-    # Общий лог
     root = logging.getLogger()
     root.setLevel(logging.INFO)
 
@@ -36,7 +37,6 @@ def setup_logging():
     file_handler.setFormatter(fmt)
     root.addHandler(file_handler)
 
-    # Лог ошибок
     error_handler = logging.handlers.RotatingFileHandler(
         "logs/bot_errors.log", maxBytes=2*1024*1024, backupCount=3, encoding="utf-8"
     )
@@ -50,7 +50,6 @@ logger = logging.getLogger(__name__)
 
 # ─── Уведомление админов ────────────────────────────────────────
 async def notify_admins(bot: Bot, text: str):
-    """Отправляет сообщение всем админам. Игнорирует ошибки."""
     for admin_id in config.ADMIN_IDS:
         try:
             await bot.send_message(admin_id, text, parse_mode="HTML")
@@ -66,19 +65,116 @@ async def main():
     dp.update.middleware(DbSessionMiddleware(async_session))
     dp.update.middleware(AdminMiddleware())
 
-    dp.include_router(admin_router)   # сначала — чтобы админские команды имели приоритет
+    dp.include_router(admin_router)
     dp.include_router(start_router)
     dp.include_router(menu_router)
+
+    # Фоновый watchdog — проверяет все PENDING платежи каждые 5 минут
+    asyncio.create_task(_payment_watchdog(bot))
+
+    # Восстанавливаем проверку платежей для PENDING транзакций после рестарта
+    async with async_session() as session:
+        result = await session.execute(
+            select(Transaction).where(Transaction.status == "PENDING")
+        )
+        pending = result.scalars().all()
+        for tx in pending:
+            if tx.external_id:
+                logger.info(f"Восстанавливаем проверку платежа tx={tx.id} external_id={tx.external_id}")
+                asyncio.create_task(
+                    _auto_confirm_payment_by_id(bot, tx.id, tx.external_id)
+                )
 
     return bot, dp
 
 
+async def _payment_watchdog(bot: Bot):
+    """Каждые 5 минут проверяет все PENDING транзакции."""
+    from apps.services.payment.platega_service import PlategaService
+    from bot.handlers.menu import _activate_subscription_after_payment
+    from apps.db.repositories.transaction import update_transaction_status
+
+    platega = PlategaService(config.PLATEGA_MERCHANT_ID, config.PLATEGA_SECRET)
+
+    while True:
+        await asyncio.sleep(300)
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Transaction).where(
+                        Transaction.status == "PENDING",
+                        Transaction.external_id.isnot(None),
+                    )
+                )
+                pending = result.scalars().all()
+
+            for tx in pending:
+                try:
+                    status = await platega.check_status(tx.external_id)
+                    if status == "CONFIRMED":
+                        async with async_session() as session:
+                            await _activate_subscription_after_payment(session, tx.id)
+                        logger.info(f"Watchdog: подтверждён платёж tx={tx.id}")
+                        try:
+                            await bot.send_message(
+                                tx.user_id,
+                                "<tg-emoji emoji-id=\"5260341314095947411\">✅</tg-emoji> <b>Оплата подтверждена!</b>\n"
+                                "Ваша подписка активирована. Ссылку ищите в Профиле → Мои подписки.",
+                                parse_mode="HTML"
+                            )
+                        except Exception:
+                            pass
+                    elif status in ("CANCELED", "FAILED", "EXPIRED"):
+                        async with async_session() as session:
+                            await update_transaction_status(session, tx.id, status)
+                        logger.info(f"Watchdog: платёж tx={tx.id} → {status}")
+                except Exception as e:
+                    logger.error(f"Watchdog: ошибка проверки tx={tx.id}: {e}")
+        except Exception as e:
+            logger.error(f"Watchdog: критическая ошибка: {e}", exc_info=True)
+
+
+async def _auto_confirm_payment_by_id(bot: Bot, tx_id: int, external_id: str):
+    """Восстанавливает проверку платежа после рестарта бота."""
+    from apps.services.payment.platega_service import PlategaService
+    from bot.handlers.menu import _activate_subscription_after_payment
+    from apps.db.repositories.transaction import update_transaction_status
+
+    platega = PlategaService(config.PLATEGA_MERCHANT_ID, config.PLATEGA_SECRET)
+
+    for _ in range(30):
+        await asyncio.sleep(20)
+        try:
+            status = await platega.check_status(external_id)
+        except Exception as e:
+            logger.error(f"check_status error tx={tx_id}: {e}")
+            continue
+
+        if status == "CONFIRMED":
+            async with async_session() as session:
+                await _activate_subscription_after_payment(session, tx_id)
+            try:
+                for admin_id in config.ADMIN_IDS:
+                    await bot.send_message(
+                        admin_id,
+                        f"✅ Платёж <code>{tx_id}</code> подтверждён после рестарта бота.",
+                        parse_mode="HTML"
+                    )
+            except Exception:
+                pass
+            return
+
+        if status in ("CANCELED", "FAILED"):
+            async with async_session() as session:
+                await update_transaction_status(session, tx_id, status)
+            return
+
+    async with async_session() as session:
+        await update_transaction_status(session, tx_id, "EXPIRED")
+
+
 # ─── "Бессмертный" цикл ─────────────────────────────────────────
 async def immortal_loop():
-    """
-    Бесконечный цикл. Бот не умирает ни при каких обстоятельствах.
-    При падении — пишет в bot_errors.log, ждёт 5 сек, перезапускается.
-    """
     bot, dp = await main()
     first_start = True
 
@@ -110,13 +206,11 @@ async def immortal_loop():
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             err_text = f"[{ts}] CRASH: {type(e).__name__}: {e}"
 
-            # Пишем в bot_errors.log
             with open("logs/bot_errors.log", "a", encoding="utf-8") as f:
                 f.write(err_text + "\n")
 
             logger.error(f"Бот упал: {e}", exc_info=True)
 
-            # Уведомляем всех админов
             admin_msg = (
                 f"🔴 <b>Бот упал и перезапускается!</b>\n\n"
                 f"<b>Время:</b> {ts}\n"
