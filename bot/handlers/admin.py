@@ -33,6 +33,7 @@ remnawave = RemnawaveService(
     api_token=config.PANEL_API_TOKEN,
     inbound_uuid=config.PANEL_INBOUND_UUID,
     internal_squad_uuids=config.INTERNAL_SQUAD_UUIDS,
+    external_squad_uuid=config.EXTERNAL_SQUAD_UUID,
 )
 
 

@@ -20,10 +20,12 @@ class VpnUser:
 class RemnawaveService:
 
     def __init__(self, panel_url: str, api_token: str, inbound_uuid: str = "",
-                 internal_squad_uuids: Optional[List[str]] = None):
+                 internal_squad_uuids: Optional[List[str]] = None,
+                 external_squad_uuid: Optional[str] = None):
         self.panel_url = panel_url.rstrip("/")
         self.api_token = api_token
         self.internal_squad_uuids = internal_squad_uuids or []
+        self.external_squad_uuid = external_squad_uuid
         self._headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
@@ -55,6 +57,8 @@ class RemnawaveService:
 
             if self.internal_squad_uuids:
                 payload["activeInternalSquads"] = self.internal_squad_uuids
+            if self.external_squad_uuid:
+                payload["externalSquadUuid"] = self.external_squad_uuid
 
             data = await self._request("POST", "/api/users", json=payload)
             user = self._parse(data.get("response", data))
