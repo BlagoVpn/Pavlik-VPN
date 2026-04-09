@@ -155,6 +155,9 @@ async def show_user_agreement(callback: types.CallbackQuery):
 async def show_referrals(callback: types.CallbackQuery, session: AsyncSession):
     user_id = callback.from_user.id
     user = await session.get(User, user_id)
+    if not user:
+        await callback.answer("Ошибка: Пользователь не найден.")
+        return
 
     stmt1 = select(func.count(User.id)).where(User.referred_by == user_id)
     lvl1_count = (await session.execute(stmt1)).scalar() or 0
@@ -179,6 +182,9 @@ async def show_referrals(callback: types.CallbackQuery, session: AsyncSession):
 @menu_router.callback_query(F.data == "withdraw_referral")
 async def withdraw_referral(callback: types.CallbackQuery, session: AsyncSession):
     user = await session.get(User, callback.from_user.id)
+    if not user:
+        await callback.answer("Ошибка: Пользователь не найден.")
+        return
     if user.referral_balance < 1000:
         await callback.answer(
             f"❌ Минимальная сумма вывода — 1000 ₽\nВаш баланс: {user.referral_balance:.2f} ₽",
@@ -392,6 +398,9 @@ async def show_promo_code(callback: types.CallbackQuery):
 @menu_router.callback_query(F.data == "confirm_trial_request")
 async def show_trial_confirmation(callback: types.CallbackQuery, session: AsyncSession):
     user = await session.get(User, callback.from_user.id)
+    if not user:
+        await callback.answer("Ошибка: Пользователь не найден.")
+        return
     if user.trial_used:
         await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
         return
@@ -410,6 +419,9 @@ async def show_trial_confirmation(callback: types.CallbackQuery, session: AsyncS
 @menu_router.callback_query(F.data == "claim_trial")
 async def claim_trial(callback: types.CallbackQuery, session: AsyncSession):
     user = await session.get(User, callback.from_user.id)
+    if not user:
+        await callback.answer("Ошибка: Пользователь не найден.")
+        return
 
     if user.trial_used:
         await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
@@ -533,6 +545,9 @@ async def show_app_wip(callback: types.CallbackQuery):
 @menu_router.callback_query(F.data == "back_to_main")
 async def back_to_main(callback: types.CallbackQuery, session: AsyncSession):
     user = await session.get(User, callback.from_user.id)
+    if not user:
+        await callback.answer("Ошибка: Пользователь не найден.")
+        return
     await callback.message.edit_text(
         "<tg-emoji emoji-id=\"5258152182150077732\">⚡</tg-emoji> <b>Blago VPN — Ваш персональный ключ к свободе.</b>\n\n"
         "Забудьте о границах в интернете. Мы обеспечиваем сверхбыстрое соединение, абсолютную анонимность и доступ к любому контенту в один клик.\n\n"

@@ -108,7 +108,7 @@ class RemnawaveService:
         try:
             expire_dt = datetime.fromisoformat(raw_expire.replace("Z", "+00:00")).replace(tzinfo=None)
         except Exception:
-            expire_dt = datetime.utcnow()
+            expire_dt = datetime.now(timezone.utc).replace(tzinfo=None)
 
         return VpnUser(
             uuid=uuid,
