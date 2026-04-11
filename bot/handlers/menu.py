@@ -12,7 +12,7 @@ from sqlalchemy import select, func
 
 from apps.db.models.user import User
 from apps.db.models.transaction import Transaction
-from apps.db.models.promo_code import PromoCode, PromoCodeUsage
+from apps.db.models.promo_code import PromoCode
 from bot.keyboards.main_menu import get_main_menu_keyboard
 from bot.keyboards.subscriptions import get_subscriptions_keyboard, get_payment_methods_keyboard
 from bot.keyboards.common import get_back_keyboard, get_back_to_profile_keyboard
@@ -69,6 +69,20 @@ MAIN_TEXT = (
     "  •  <b>Простота:</b> Настройка за 30 секунд прямо в Telegram.\n\n"
     "<i>Ваша безопасность — наша работа. Подключайтесь и летайте!</i>"
 )
+
+MAIN_TEXT_EN = (
+    "<tg-emoji emoji-id=\"5258152182150077732\">⚡</tg-emoji> <b>Blago VPN — Your Personal Key to Freedom.</b>\n\n"
+    "Forget about internet restrictions. We provide ultra-fast connection, complete anonymity and access to any content in one click.\n\n"
+    "<tg-emoji emoji-id=\"5260221883940347555\">🚀</tg-emoji> <b>Our advantages:</b>\n"
+    "  •  <b>Speed:</b> Up to 1 Gbit/s without delays.\n"
+    "  •  <b>Privacy:</b> We respect your right to privacy and don't store your activity history.\n"
+    "  •  <b>Simplicity:</b> Setup in 30 seconds directly in Telegram.\n\n"
+    "<i>Your security is our job. Connect and fly!</i>"
+)
+
+
+def _main_text(language: str) -> str:
+    return MAIN_TEXT_EN if language == "en" else MAIN_TEXT
 
 
 # ─── FSM: активация промокода пользователем ──────────────────────
@@ -276,12 +290,17 @@ async def process_buy_tariff(callback: types.CallbackQuery, session: AsyncSessio
         )
         return
 
-    # Проверяем активный промокод
+    # Загружаем пользователя
     user = await session.get(User, callback.from_user.id)
+    if not user:
+        await callback.answer("Ошибка: пользователь не найден.", show_alert=True)
+        return
+
+    # Проверяем активный промокод
     promo = None
     discount_text = ""
 
-    if user and user.active_promo_code_id:
+    if user.active_promo_code_id:
         promo = await session.get(PromoCode, user.active_promo_code_id)
         if promo and promo.is_active and (not promo.expires_at or promo.expires_at > datetime.now()):
             original_amount = amount
@@ -460,7 +479,6 @@ async def show_promo_code(callback: types.CallbackQuery, state: FSMContext):
 @menu_router.message(StateFilter(PromoActivation.enter_code))
 async def activate_promo_code(message: types.Message, state: FSMContext, session: AsyncSession):
     code = (message.text or "").strip().upper()
-    await state.clear()
 
     if not code:
         await message.answer("❌ Введите название промокода.")
@@ -468,6 +486,7 @@ async def activate_promo_code(message: types.Message, state: FSMContext, session
 
     user = await session.get(User, message.from_user.id)
     if not user:
+        await state.clear()
         return
 
     promo = await get_promo_by_code(session, code)
@@ -478,6 +497,7 @@ async def activate_promo_code(message: types.Message, state: FSMContext, session
             reply_markup=get_back_keyboard(),
             parse_mode="HTML"
         )
+        await state.clear()
         return
 
     now = datetime.now()
@@ -487,6 +507,7 @@ async def activate_promo_code(message: types.Message, state: FSMContext, session
             reply_markup=get_back_keyboard(),
             parse_mode="HTML"
         )
+        await state.clear()
         return
 
     if promo.max_activations is not None and promo.current_activations >= promo.max_activations:
@@ -495,6 +516,7 @@ async def activate_promo_code(message: types.Message, state: FSMContext, session
             reply_markup=get_back_keyboard(),
             parse_mode="HTML"
         )
+        await state.clear()
         return
 
     already_used = await has_user_used_promo(session, promo.id, user.id)
@@ -504,11 +526,13 @@ async def activate_promo_code(message: types.Message, state: FSMContext, session
             reply_markup=get_back_keyboard(),
             parse_mode="HTML"
         )
+        await state.clear()
         return
 
-    # Сохраняем промокод на пользователе
+    # Все проверки пройдены — сохраняем промокод и сбрасываем состояние
     user.active_promo_code_id = promo.id
     await session.commit()
+    await state.clear()
 
     await message.answer(
         f"✅ <b>Промокод активирован!</b>\n\n"
@@ -543,21 +567,30 @@ async def show_lang_selection_cb(callback: types.CallbackQuery, session: AsyncSe
 
 
 async def _show_lang_selection(msg: types.Message, user: User, edit: bool):
-    current = "🇷🇺 Русский" if user.language == "ru" else "🇬🇧 English"
+    lang = getattr(user, "language", "ru")
+    if lang == "en":
+        current = "🇬🇧 English"
+        title = "🌐 <b>Interface language</b>"
+        current_label = "Current language"
+        choose_label = "Choose language:"
+        back_label = "◀️ Back"
+    else:
+        current = "🇷🇺 Русский"
+        title = "🌐 <b>Язык интерфейса</b>"
+        current_label = "Текущий язык"
+        choose_label = "Выберите язык:"
+        back_label = "◀️ Назад"
+
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_lang:ru"),
         InlineKeyboardButton(text="🇬🇧 English", callback_data="set_lang:en"),
     )
     builder.row(InlineKeyboardButton(
-        text="Назад", callback_data="back_to_main",
+        text=back_label, callback_data="back_to_main",
         icon_custom_emoji_id="5258236805890710909", style="danger"
     ))
-    text = (
-        f"🌐 <b>Язык интерфейса</b>\n\n"
-        f"Текущий язык: <b>{current}</b>\n\n"
-        f"Выберите язык:"
-    )
+    text = f"{title}\n\n{current_label}: <b>{current}</b>\n\n{choose_label}"
     if edit:
         await msg.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     else:
@@ -575,12 +608,16 @@ async def set_language(callback: types.CallbackQuery, session: AsyncSession):
     user.language = lang
     await session.commit()
 
-    lang_name = "🇷🇺 Русский" if lang == "ru" else "🇬🇧 English"
-    await callback.answer(f"✅ Язык изменён: {lang_name}", show_alert=True)
+    if lang == "en":
+        alert_text = "✅ Language changed: 🇬🇧 English"
+    else:
+        alert_text = "✅ Язык изменён: 🇷🇺 Русский"
+
+    await callback.answer(alert_text, show_alert=True)
 
     await callback.message.edit_text(
-        MAIN_TEXT,
-        reply_markup=get_main_menu_keyboard(user),
+        _main_text(lang),
+        reply_markup=get_main_menu_keyboard(user, language=lang),
         parse_mode="HTML"
     )
 
@@ -733,9 +770,10 @@ async def back_to_main(callback: types.CallbackQuery, session: AsyncSession):
     if not user:
         await callback.answer("Ошибка: Пользователь не найден.")
         return
+    lang = getattr(user, "language", "ru")
     await callback.message.edit_text(
-        MAIN_TEXT,
-        reply_markup=get_main_menu_keyboard(user),
+        _main_text(lang),
+        reply_markup=get_main_menu_keyboard(user, language=lang),
         parse_mode="HTML"
     )
     await callback.answer()
