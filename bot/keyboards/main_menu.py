@@ -10,7 +10,6 @@ _LABELS = {
         "profile": "Мой профиль",
         "referrals": "Рефералы",
         "instructions": "Инструкция по подключению",
-        "lang": "🌐 Сменить язык / Change language",
         "support": "Поддержка",
         "channel": "Наш канал",
     },
@@ -20,7 +19,6 @@ _LABELS = {
         "profile": "My Profile",
         "referrals": "Referrals",
         "instructions": "Connection Guide",
-        "lang": "🌐 Change language / Сменить язык",
         "support": "Support",
         "channel": "Our Channel",
     },
@@ -76,15 +74,7 @@ def get_main_menu_keyboard(user: User, language: str = "ru") -> InlineKeyboardMa
         )
     )
 
-    # Ряд 4: Сменить язык
-    builder.row(
-        InlineKeyboardButton(
-            text=lbl["lang"],
-            callback_data="select_lang"
-        )
-    )
-
-    # Ряд 5: Поддержка | Канал
+    # Ряд 4: Поддержка | Канал
     builder.row(
         InlineKeyboardButton(
             text=lbl["support"],
