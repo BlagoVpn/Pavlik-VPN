@@ -7,6 +7,8 @@ from datetime import datetime
 
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
+from aiohttp import web
+from apps.services.payment.webhook_server import create_webhook_app
 
 from sqlalchemy import select
 from config import config
@@ -222,8 +224,21 @@ async def immortal_loop():
             await asyncio.sleep(5)
 
 
+async def start_webhook_server():
+    app = create_webhook_app()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=8080)
+    await site.start()
+    logger.info("Webhook server started on port 8080")
+
+
 if __name__ == "__main__":
+    async def run():
+        await start_webhook_server()
+        await immortal_loop()
+
     try:
-        asyncio.run(immortal_loop())
+        asyncio.run(run())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Бот остановлен вручную.")

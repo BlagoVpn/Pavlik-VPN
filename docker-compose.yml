@@ -7,6 +7,8 @@ services:
     container_name: vpn_bot_app
     restart: always
     env_file: .env
+    ports:
+      - "8080:8080"
     depends_on:
       db:
         condition: service_healthy
