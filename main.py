@@ -112,6 +112,7 @@ async def _payment_watchdog(bot: Bot):
                 )
                 pending = result.scalars().all()
 
+            logger.info(f"Watchdog: найдено {len(pending)} PENDING транзакций")
             for tx in pending:
                 try:
                     status = await platega.check_status(tx.external_id)

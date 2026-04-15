@@ -86,10 +86,20 @@ class PlategaService:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
                 async with session.get(endpoint, params={"id": transaction_id}, headers=self.headers) as response:
+                    response_text = await response.text()
+                    logger.info(f"Platega check_status tx={transaction_id}: HTTP {response.status}, body={response_text[:200]}")
                     if response.status == 200:
-                        data = await response.json()
-                        return data.get("status")
+                        try:
+                            import json as _json
+                            data = _json.loads(response_text)
+                        except Exception:
+                            logger.error(f"Platega check_status: не удалось распарсить JSON: {response_text[:200]}")
+                            return None
+                        status = data.get("status")
+                        logger.info(f"Platega check_status tx={transaction_id}: статус={status}")
+                        return status
+                    logger.error(f"Platega check_status: HTTP {response.status}, body={response_text[:200]}")
                     return None
             except Exception as e:
-                logger.error(f"Platega status check error: {e}")
+                logger.error(f"Platega status check error tx={transaction_id}: {e}")
                 return None
