@@ -846,20 +846,53 @@ async def show_platform_apps(callback: types.CallbackQuery):
     await callback.answer()
 
 
+ANDROID_INSTRUCTION_URL = "https://telegra.ph/Instrukciya-po-podklyucheniya-servisa-Blago-Vpn-04-22"
+
+
 @menu_router.callback_query(F.data.startswith("app:"))
 async def show_app_wip(callback: types.CallbackQuery):
-    platform = callback.data.split(":")[1]
+    parts = callback.data.split(":")
+    platform = parts[1]
+    app = parts[2] if len(parts) > 2 else ""
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="Назад", callback_data=f"instr:{platform}", icon_custom_emoji_id="5258236805890710909", style="danger")
-    )
 
-    await callback.message.edit_text(
-        "🚧 <b>Пока в разработке</b>\n\nИнструкция скоро появится. Следите за обновлениями в @blago_vpn_news",
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
-    )
+    if platform == "android":
+        app_names = {"happ": "Happ", "v2raytun": "V2RayTun"}
+        app_title = app_names.get(app, "Android")
+
+        builder.row(InlineKeyboardButton(
+            text="📖 Открыть инструкцию",
+            url=ANDROID_INSTRUCTION_URL,
+        ))
+        builder.row(InlineKeyboardButton(
+            text="Назад",
+            callback_data=f"instr:{platform}",
+            icon_custom_emoji_id="5258236805890710909",
+            style="danger",
+        ))
+
+        await callback.message.edit_text(
+            f"<b>Инструкция по подключению — Android ({app_title})</b>\n\n"
+            "Нажмите кнопку ниже, чтобы открыть пошаговую инструкцию по подключению "
+            "сервиса <b>Blago VPN</b> на устройстве Android.",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+    else:
+        builder.row(InlineKeyboardButton(
+            text="Назад",
+            callback_data=f"instr:{platform}",
+            icon_custom_emoji_id="5258236805890710909",
+            style="danger",
+        ))
+
+        await callback.message.edit_text(
+            "🚧 <b>Пока в разработке</b>\n\nИнструкция скоро появится. Следите за обновлениями в @blago_vpn_news",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+
     await callback.answer()
 
 
