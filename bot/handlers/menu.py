@@ -848,10 +848,14 @@ async def show_platform_apps(callback: types.CallbackQuery):
 
 ANDROID_INSTRUCTION_URL = "https://telegra.ph/Instrukciya-po-podklyucheniya-servisa-Blago-Vpn-04-22"
 IOS_INSTRUCTION_URL = "https://telegra.ph/Instrukciya-po-podklyucheniyu-Blago-VPN-04-22"
+WINDOWS_INSTRUCTION_URL = "https://telegra.ph/Instrukciya-po-podklyucheniyu-Blago-VPN-04-22-2"
+MACOS_INSTRUCTION_URL = "https://telegra.ph/Instrukciya-po-podklyucheniyu-Blago-VPN-04-22-3"
 
 _INSTRUCTION_URLS = {
     "android": ANDROID_INSTRUCTION_URL,
     "ios": IOS_INSTRUCTION_URL,
+    "windows": WINDOWS_INSTRUCTION_URL,
+    "macos": MACOS_INSTRUCTION_URL,
 }
 
 _PLATFORM_LABELS = {
