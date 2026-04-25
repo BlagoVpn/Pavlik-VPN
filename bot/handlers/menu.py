@@ -231,16 +231,31 @@ async def refresh_link(callback: types.CallbackQuery, session: AsyncSession):
         await callback.answer("Пользователь не найден.", show_alert=True)
         return
 
-    if not (user.vpn_uuid and user.is_active):
+    if not (user.vpn_uuid and user.is_active and user.subscription_end):
         await callback.answer("❌ Активная подписка не найдена.", show_alert=True)
         return
 
+    if user.subscription_end <= datetime.now():
+        await callback.answer("❌ Подписка истекла, продлите её.", show_alert=True)
+        return
+
     await callback.answer("⏳ Генерируем новую ссылку...")
+
+    # Сначала синхронизируем срок действия в панели — иначе после revoke
+    # клиент может получить "expired", если в Remnawave expireAt отстал от БД.
+    extended = await remnawave.extend_user(user.vpn_uuid, new_expire_dt=user.subscription_end)
+    if not extended:
+        logger.warning(f"refresh_link: extend_user failed для user={user.id}")
 
     vpn_user = await remnawave.revoke_subscription(user.vpn_uuid)
     if not vpn_user:
         await callback.answer("❌ Не удалось обновить ссылку. Попробуйте позже.", show_alert=True)
         return
+
+    # Повторно фиксируем срок и активируем пользователя — на случай,
+    # если revoke сбросил expireAt или статус.
+    await remnawave.extend_user(user.vpn_uuid, new_expire_dt=user.subscription_end)
+    await remnawave.enable_user(user.vpn_uuid)
 
     user.vless_link = vpn_user.subscription_url
     await session.commit()
